@@ -1,0 +1,27 @@
+{
+  "name": "medicare-part-d",
+  "description": "Access CMS Medicare Part D drug spending and prescriber data. Search drugs, view spending trends, find top prescribers by drug or NPI. Uses public CMS data.cms.gov APIs with 2024 quarterly and 2019-2023 annual data.",
+  "version": "1.0.0",
+  "author": {
+    "name": "@stayce",
+    "url": "https://github.com/stayce"
+  },
+  "repository": "https://github.com/stayce/partd-mcp-cloudflare",
+  "mcpServers": {
+    "partd": {
+      "type": "http",
+      "url": "https://partd-mcp-server.staycek.workers.dev/mcp"
+    }
+  },
+  "keywords": [
+    "medicare",
+    "part-d",
+    "drugs",
+    "prescriptions",
+    "cms",
+    "healthcare",
+    "spending",
+    "prescribers"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.stayce/partd-mcp",
+  "description": "CMS Medicare Part D drug spending and prescriber data. 2024 quarterly data.",
+  "repository": {
+    "url": "https://github.com/stayce/partd-mcp-cloudflare",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://partd-mcp-server.staycek.workers.dev/mcp"
+    }
+  ]
+}
