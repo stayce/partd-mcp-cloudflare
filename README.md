@@ -2,7 +2,7 @@
 
 A Model Context Protocol (MCP) server for **CMS Medicare Part D** drug spending and prescriber data, deployed on Cloudflare Workers.
 
-**Live URL:** `https://partd-mcp-server.staycek.workers.dev/mcp`
+**Live URL:** `https://mcp-partd.medseal.app/mcp`
 
 ## Features
 
@@ -41,7 +41,7 @@ Add to your Claude Desktop config:
   "mcpServers": {
     "partd": {
       "type": "http",
-      "url": "https://partd-mcp-server.staycek.workers.dev/mcp"
+      "url": "https://mcp-partd.medseal.app/mcp"
     }
   }
 }
