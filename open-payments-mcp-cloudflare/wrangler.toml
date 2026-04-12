@@ -1,0 +1,19 @@
+# Open Payments MCP Server
+name = "open-payments-mcp-server"
+main = "src/index.ts"
+compatibility_date = "2024-12-05"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# Development environment
+[env.dev]
+name = "open-payments-mcp-server-dev"
+
+# Production environment with custom domain
+[env.production]
+name = "open-payments-mcp-server"
+routes = [
+  { pattern = "mcp-openpayments.medseal.app", custom_domain = true }
+]
