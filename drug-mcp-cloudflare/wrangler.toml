@@ -1,0 +1,19 @@
+# Drug Reference MCP Server
+name = "drug-mcp-server"
+main = "src/index.ts"
+compatibility_date = "2024-12-05"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# Development environment
+[env.dev]
+name = "drug-mcp-server-dev"
+
+# Production environment with custom domain
+[env.production]
+name = "drug-mcp-server"
+routes = [
+  { pattern = "mcp-drug.medseal.app", custom_domain = true }
+]
