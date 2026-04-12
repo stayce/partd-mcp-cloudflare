@@ -47,7 +47,11 @@ function healthResponse(): Response {
       },
       tool: {
         name: "partd",
-        actions: ["drug", "spending", "prescribers", "top", "search", "api", "help"],
+        actions: [
+          "drug", "spending", "prescribers", "top", "search",
+          "compare", "geography", "manufacturer", "stats",
+          "api", "help",
+        ],
       },
       data: {
         source: "CMS data.cms.gov",

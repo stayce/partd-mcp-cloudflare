@@ -7,6 +7,7 @@ import {
   DrugSpendingQuarterly,
   DrugSpendingAnnual,
   PrescriberByDrug,
+  PrescriberByGeo,
 } from "./types";
 
 const CMS_BASE_URL = "https://data.cms.gov/data-api/v1/dataset";
@@ -126,6 +127,84 @@ export class CMSClient {
       keyword: npi,
       size: "100",
     });
+  }
+
+  /**
+   * Get top drugs with flexible sort criteria
+   */
+  async getTopDrugs(
+    sortBy: "spending" | "beneficiaries" | "claims" = "spending",
+    maxResults: number = 25
+  ): Promise<DrugSpendingQuarterly[]> {
+    const results = await this.request<DrugSpendingQuarterly>(
+      DATASETS.SPENDING_QUARTERLY,
+      { size: String(maxResults * 2) }
+    );
+
+    const sortField: Record<string, keyof DrugSpendingQuarterly> = {
+      spending: "Tot_Spndng",
+      beneficiaries: "Tot_Benes",
+      claims: "Tot_Clms",
+    };
+
+    const field = sortField[sortBy];
+
+    return results
+      .filter((d) => d.Mftr_Name === "Overall")
+      .sort((a, b) => parseFloat(b[field]) - parseFloat(a[field]))
+      .slice(0, maxResults);
+  }
+
+  /**
+   * Get prescriber data by geography
+   */
+  async getPrescribersByGeo(
+    drugName?: string,
+    state?: string,
+    maxResults: number = 25
+  ): Promise<PrescriberByGeo[]> {
+    const params: Record<string, string> = {
+      size: String(maxResults),
+    };
+    if (drugName) {
+      params.keyword = drugName;
+    }
+
+    const results = await this.request<PrescriberByGeo>(
+      DATASETS.PRESCRIBER_BY_GEO,
+      params
+    );
+
+    if (state) {
+      return results.filter(
+        (r) =>
+          (r.Prscrbr_Geo_Cd && r.Prscrbr_Geo_Cd.toUpperCase() === state.toUpperCase()) ||
+          (r.Prscrbr_Geo_Desc && r.Prscrbr_Geo_Desc.toUpperCase().includes(state.toUpperCase()))
+      );
+    }
+
+    return results;
+  }
+
+  /**
+   * Get drugs by manufacturer name
+   */
+  async getDrugsByManufacturer(
+    manufacturer: string,
+    maxResults: number = 25
+  ): Promise<DrugSpendingQuarterly[]> {
+    const results = await this.request<DrugSpendingQuarterly>(
+      DATASETS.SPENDING_QUARTERLY,
+      { keyword: manufacturer, size: String(maxResults * 2) }
+    );
+
+    return results
+      .filter(
+        (d) =>
+          d.Mftr_Name.toUpperCase().includes(manufacturer.toUpperCase()) &&
+          d.Mftr_Name !== "Overall"
+      )
+      .slice(0, maxResults);
   }
 
   /**
