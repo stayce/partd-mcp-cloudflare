@@ -8,6 +8,7 @@ import {
   DrugSpendingAnnual,
   PrescriberByDrug,
   PrescriberByGeo,
+  PrescriberByProvider,
 } from "./types";
 
 const CMS_BASE_URL = "https://data.cms.gov/data-api/v1/dataset";
@@ -205,6 +206,65 @@ export class CMSClient {
           d.Mftr_Name !== "Overall"
       )
       .slice(0, maxResults);
+  }
+
+  /**
+   * Get annual spending data for outlier detection (large batch)
+   */
+  async getAnnualOutliers(maxResults: number = 50): Promise<DrugSpendingAnnual[]> {
+    const results = await this.request<DrugSpendingAnnual>(
+      DATASETS.SPENDING_ANNUAL,
+      { size: String(maxResults * 3) }
+    );
+
+    return results.filter((d) => d.Mftr_Name === "Overall");
+  }
+
+  /**
+   * Search for drugs by generic name to find alternatives
+   */
+  async getGenericAlternatives(
+    genericName: string,
+    maxResults: number = 25
+  ): Promise<DrugSpendingQuarterly[]> {
+    const results = await this.request<DrugSpendingQuarterly>(
+      DATASETS.SPENDING_QUARTERLY,
+      { keyword: genericName, size: String(maxResults * 2) }
+    );
+
+    return results.filter((d) => d.Mftr_Name === "Overall");
+  }
+
+  /**
+   * Get prescribers by specialty for a drug
+   */
+  async getPrescribersBySpecialty(
+    drugName: string,
+    specialty?: string,
+    maxResults: number = 100
+  ): Promise<PrescriberByDrug[]> {
+    const results = await this.request<PrescriberByDrug>(
+      DATASETS.PRESCRIBER_BY_DRUG,
+      { keyword: drugName, size: String(maxResults) }
+    );
+
+    if (specialty) {
+      return results.filter(
+        (p) => p.Prscrbr_Type.toUpperCase().includes(specialty.toUpperCase())
+      );
+    }
+
+    return results;
+  }
+
+  /**
+   * Get provider data from prescriber-by-provider dataset
+   */
+  async getProviderByNPI(npi: string): Promise<PrescriberByProvider[]> {
+    return this.request<PrescriberByProvider>(DATASETS.PRESCRIBER_BY_PROVIDER, {
+      keyword: npi,
+      size: "10",
+    });
   }
 
   /**

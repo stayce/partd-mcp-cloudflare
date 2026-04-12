@@ -10,6 +10,7 @@ import {
   DrugSpendingAnnual,
   PrescriberByDrug,
   PrescriberByGeo,
+  PrescriberByProvider,
   DATASETS,
 } from "./types";
 
@@ -139,6 +140,18 @@ export async function handleAction(
 
       case "stats":
         return await handleStats(params, client);
+
+      case "outliers":
+        return await handleOutliers(params, client);
+
+      case "generics":
+        return await handleGenerics(params, client);
+
+      case "specialty":
+        return await handleSpecialty(params, client);
+
+      case "summary":
+        return await handleSummary(params, client);
 
       case "api":
         return await handleApi(params, client);
@@ -620,6 +633,325 @@ async function handleStats(
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
+async function handleOutliers(
+  params: PartDParamsType,
+  client: CMSClient
+): Promise<ToolResult> {
+  const maxResults = params.max_results || 15;
+  const direction = params.direction || "both";
+  const results = await client.getAnnualOutliers(maxResults * 2);
+
+  // Filter to entries with valid YoY change data
+  const withChange = results.filter(
+    (d) => d.Chg_Avg_Spnd_Per_Dsg_Unt_22_23 && !isNaN(parseFloat(d.Chg_Avg_Spnd_Per_Dsg_Unt_22_23))
+  );
+
+  if (withChange.length === 0) {
+    return {
+      content: [{ type: "text", text: "No trend data available for outlier analysis" }],
+    };
+  }
+
+  const sorted = [...withChange].sort(
+    (a, b) => parseFloat(b.Chg_Avg_Spnd_Per_Dsg_Unt_22_23) - parseFloat(a.Chg_Avg_Spnd_Per_Dsg_Unt_22_23)
+  );
+
+  const lines: string[] = [];
+
+  if (direction === "risers" || direction === "both") {
+    const risers = sorted
+      .filter((d) => parseFloat(d.Chg_Avg_Spnd_Per_Dsg_Unt_22_23) > 0)
+      .slice(0, maxResults);
+
+    lines.push("# Biggest Price Increases (2022-2023)\n");
+    lines.push("| Rank | Drug | Generic | 2023 Spending | YoY Change | 4-Year CAGR |");
+    lines.push("|------|------|---------|---------------|------------|-------------|");
+
+    for (let i = 0; i < risers.length; i++) {
+      const d = risers[i];
+      const yoy = (parseFloat(d.Chg_Avg_Spnd_Per_Dsg_Unt_22_23) * 100).toFixed(1);
+      const cagr = d.CAGR_Avg_Spnd_Per_Dsg_Unt_19_23
+        ? (parseFloat(d.CAGR_Avg_Spnd_Per_Dsg_Unt_19_23) * 100).toFixed(1) + "%"
+        : "N/A";
+      lines.push(
+        `| ${i + 1} | ${d.Brnd_Name} | ${d.Gnrc_Name} | ${formatCurrency(d.Tot_Spndng_2023)} | +${yoy}% | ${cagr} |`
+      );
+    }
+  }
+
+  if (direction === "both") {
+    lines.push("");
+  }
+
+  if (direction === "fallers" || direction === "both") {
+    const fallers = [...sorted]
+      .reverse()
+      .filter((d) => parseFloat(d.Chg_Avg_Spnd_Per_Dsg_Unt_22_23) < 0)
+      .slice(0, maxResults);
+
+    lines.push("# Biggest Price Decreases (2022-2023)\n");
+    lines.push("| Rank | Drug | Generic | 2023 Spending | YoY Change | 4-Year CAGR |");
+    lines.push("|------|------|---------|---------------|------------|-------------|");
+
+    for (let i = 0; i < fallers.length; i++) {
+      const d = fallers[i];
+      const yoy = (parseFloat(d.Chg_Avg_Spnd_Per_Dsg_Unt_22_23) * 100).toFixed(1);
+      const cagr = d.CAGR_Avg_Spnd_Per_Dsg_Unt_19_23
+        ? (parseFloat(d.CAGR_Avg_Spnd_Per_Dsg_Unt_19_23) * 100).toFixed(1) + "%"
+        : "N/A";
+      lines.push(
+        `| ${i + 1} | ${d.Brnd_Name} | ${d.Gnrc_Name} | ${formatCurrency(d.Tot_Spndng_2023)} | ${yoy}% | ${cagr} |`
+      );
+    }
+  }
+
+  lines.push(`\n_Source: CMS Medicare Part D Annual Spending Trends (2019-2023)_`);
+
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function handleGenerics(
+  params: PartDParamsType,
+  client: CMSClient
+): Promise<ToolResult> {
+  const drugName = params.drug || params.query;
+  if (!drugName) {
+    return {
+      content: [{ type: "text", text: "drug or query parameter required for generics" }],
+      isError: true,
+    };
+  }
+
+  // First look up the drug to get its generic name
+  const drugResults = await client.getDrugSpendingQuarterly(drugName);
+  if (drugResults.length === 0) {
+    return {
+      content: [{ type: "text", text: `No drug found for '${drugName}'` }],
+    };
+  }
+
+  const original = drugResults.find((d) => d.Mftr_Name === "Overall") || drugResults[0];
+  const genericName = original.Gnrc_Name;
+
+  // Search for all drugs with the same generic name
+  const alternatives = await client.getGenericAlternatives(genericName);
+
+  // Dedupe by brand name
+  const seen = new Set<string>();
+  const unique = alternatives.filter((d) => {
+    if (seen.has(d.Brnd_Name)) return false;
+    seen.add(d.Brnd_Name);
+    return true;
+  });
+
+  const lines = [
+    `# Generic Alternatives for ${original.Brnd_Name}\n`,
+    `**Generic Name:** ${genericName}`,
+    `**Drug Uses:** ${original.Drug_Uses && !original.Drug_Uses.includes("not available") ? original.Drug_Uses.replace(/^"|"$/g, "").replace(/USES:\s*/i, "").substring(0, 300) : "N/A"}`,
+    "",
+  ];
+
+  if (unique.length <= 1) {
+    lines.push("No alternative brand-name drugs found with the same generic compound.");
+    lines.push(`\nThis may mean **${original.Brnd_Name}** is the only formulation, or alternatives are not in the Part D dataset.`);
+  } else {
+    lines.push("## Cost Comparison\n");
+    lines.push("| Drug | Spending | Avg/Beneficiary | Avg/Claim | Beneficiaries |");
+    lines.push("|------|----------|-----------------|-----------|---------------|");
+
+    const sorted = [...unique].sort(
+      (a, b) => parseFloat(a.Avg_Spnd_Per_Bene) - parseFloat(b.Avg_Spnd_Per_Bene)
+    );
+
+    for (const d of sorted) {
+      const marker = d.Brnd_Name === original.Brnd_Name ? " *" : "";
+      lines.push(
+        `| ${d.Brnd_Name}${marker} | ${formatCurrency(d.Tot_Spndng)} | ${formatCurrency(d.Avg_Spnd_Per_Bene)} | ${formatCurrency(d.Avg_Spnd_Per_Clm)} | ${parseInt(d.Tot_Benes).toLocaleString()} |`
+      );
+    }
+
+    lines.push(`\n_* = queried drug. Sorted by avg cost per beneficiary (lowest first)._`);
+
+    // Show potential savings if there's a cheaper alternative
+    const cheapest = sorted[0];
+    if (cheapest.Brnd_Name !== original.Brnd_Name) {
+      const origCost = parseFloat(original.Avg_Spnd_Per_Bene);
+      const cheapCost = parseFloat(cheapest.Avg_Spnd_Per_Bene);
+      if (origCost > cheapCost && cheapCost > 0) {
+        const savingsPercent = ((origCost - cheapCost) / origCost * 100).toFixed(0);
+        lines.push(`\n**Potential savings:** ${savingsPercent}% lower avg cost per beneficiary with **${cheapest.Brnd_Name}** vs **${original.Brnd_Name}**`);
+      }
+    }
+  }
+
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function handleSpecialty(
+  params: PartDParamsType,
+  client: CMSClient
+): Promise<ToolResult> {
+  const drugName = params.drug || params.query;
+  if (!drugName) {
+    return {
+      content: [{ type: "text", text: "drug or query parameter required for specialty" }],
+      isError: true,
+    };
+  }
+
+  const results = await client.getPrescribersBySpecialty(
+    drugName,
+    params.specialty,
+    100
+  );
+
+  if (results.length === 0) {
+    return {
+      content: [{
+        type: "text",
+        text: `No prescriber data found for '${drugName}'${params.specialty ? ` (specialty: ${params.specialty})` : ""}`,
+      }],
+    };
+  }
+
+  // Aggregate by specialty
+  const specialtyMap = new Map<string, { claims: number; cost: number; providers: number }>();
+  const providersSeen = new Map<string, Set<string>>();
+
+  for (const p of results) {
+    const spec = p.Prscrbr_Type || "Unknown";
+    const existing = specialtyMap.get(spec) || { claims: 0, cost: 0, providers: 0 };
+    specialtyMap.set(spec, {
+      claims: existing.claims + parseInt(p.Tot_Clms || "0"),
+      cost: existing.cost + parseFloat(p.Tot_Drug_Cst || "0"),
+      providers: existing.providers,
+    });
+
+    if (!providersSeen.has(spec)) {
+      providersSeen.set(spec, new Set());
+    }
+    providersSeen.get(spec)!.add(p.Prscrbr_NPI);
+  }
+
+  // Update provider counts
+  for (const [spec, npis] of providersSeen) {
+    const entry = specialtyMap.get(spec)!;
+    entry.providers = npis.size;
+  }
+
+  const sorted = [...specialtyMap.entries()].sort((a, b) => b[1].cost - a[1].cost);
+  const maxResults = params.max_results || 20;
+
+  const lines = [
+    `# Prescribing by Specialty: ${drugName}${params.specialty ? ` (filtered: ${params.specialty})` : ""}\n`,
+    "| Rank | Specialty | Providers | Claims | Total Cost |",
+    "|------|-----------|-----------|--------|------------|",
+  ];
+
+  for (let i = 0; i < Math.min(sorted.length, maxResults); i++) {
+    const [spec, data] = sorted[i];
+    lines.push(
+      `| ${i + 1} | ${spec} | ${data.providers} | ${data.claims.toLocaleString()} | ${formatCurrency(data.cost)} |`
+    );
+  }
+
+  // Total row
+  const totalCost = sorted.reduce((sum, [, d]) => sum + d.cost, 0);
+  const totalClaims = sorted.reduce((sum, [, d]) => sum + d.claims, 0);
+  const totalProviders = sorted.reduce((sum, [, d]) => sum + d.providers, 0);
+  lines.push(`| | **Total** | **${totalProviders}** | **${totalClaims.toLocaleString()}** | **${formatCurrency(totalCost)}** |`);
+
+  lines.push(`\n_Based on ${results.length} prescriber records from CMS Part D Prescriber by Drug (2022)_`);
+
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function handleSummary(
+  params: PartDParamsType,
+  client: CMSClient
+): Promise<ToolResult> {
+  // Fetch top drugs and annual outlier data in parallel
+  const [topDrugs, annualData] = await Promise.all([
+    client.getTopDrugs("spending", 10),
+    client.getAnnualOutliers(50),
+  ]);
+
+  const lines = ["# Medicare Part D Dashboard\n"];
+
+  // Top 5 by spending
+  lines.push("## Top 5 Drugs by Spending (2024)\n");
+  lines.push("| Rank | Drug | Spending | Beneficiaries |");
+  lines.push("|------|------|----------|---------------|");
+
+  for (let i = 0; i < Math.min(topDrugs.length, 5); i++) {
+    const d = topDrugs[i];
+    lines.push(
+      `| ${i + 1} | **${d.Brnd_Name}** (${d.Gnrc_Name}) | ${formatCurrency(d.Tot_Spndng)} | ${parseInt(d.Tot_Benes).toLocaleString()} |`
+    );
+  }
+
+  // Top 5 by beneficiaries
+  const byBenes = [...topDrugs].sort(
+    (a, b) => parseInt(b.Tot_Benes) - parseInt(a.Tot_Benes)
+  );
+  lines.push("\n## Most Prescribed (by beneficiaries)\n");
+  lines.push("| Rank | Drug | Beneficiaries | Spending |");
+  lines.push("|------|------|---------------|----------|");
+
+  for (let i = 0; i < Math.min(byBenes.length, 5); i++) {
+    const d = byBenes[i];
+    lines.push(
+      `| ${i + 1} | **${d.Brnd_Name}** (${d.Gnrc_Name}) | ${parseInt(d.Tot_Benes).toLocaleString()} | ${formatCurrency(d.Tot_Spndng)} |`
+    );
+  }
+
+  // Biggest price movers from annual data
+  const withChange = annualData.filter(
+    (d) => d.Chg_Avg_Spnd_Per_Dsg_Unt_22_23 && !isNaN(parseFloat(d.Chg_Avg_Spnd_Per_Dsg_Unt_22_23))
+  );
+
+  if (withChange.length > 0) {
+    const sortedByChange = [...withChange].sort(
+      (a, b) => parseFloat(b.Chg_Avg_Spnd_Per_Dsg_Unt_22_23) - parseFloat(a.Chg_Avg_Spnd_Per_Dsg_Unt_22_23)
+    );
+
+    const topRisers = sortedByChange.slice(0, 3);
+    const topFallers = [...sortedByChange].reverse().filter(
+      (d) => parseFloat(d.Chg_Avg_Spnd_Per_Dsg_Unt_22_23) < 0
+    ).slice(0, 3);
+
+    lines.push("\n## Biggest Price Increases (YoY 2022-2023)\n");
+    for (const d of topRisers) {
+      const pct = (parseFloat(d.Chg_Avg_Spnd_Per_Dsg_Unt_22_23) * 100).toFixed(1);
+      lines.push(`- **${d.Brnd_Name}**: +${pct}% (${formatCurrency(d.Tot_Spndng_2023)} total)`);
+    }
+
+    if (topFallers.length > 0) {
+      lines.push("\n## Biggest Price Decreases (YoY 2022-2023)\n");
+      for (const d of topFallers) {
+        const pct = (parseFloat(d.Chg_Avg_Spnd_Per_Dsg_Unt_22_23) * 100).toFixed(1);
+        lines.push(`- **${d.Brnd_Name}**: ${pct}% (${formatCurrency(d.Tot_Spndng_2023)} total)`);
+      }
+    }
+  }
+
+  // Aggregate stats
+  let totalSpending = 0;
+  let totalBenes = 0;
+  for (const d of topDrugs) {
+    totalSpending += parseFloat(d.Tot_Spndng || "0");
+    totalBenes += parseInt(d.Tot_Benes || "0");
+  }
+
+  lines.push("\n## Quick Stats (Top 10 Drugs)\n");
+  lines.push(`- Combined Spending: ${formatCurrency(totalSpending)}`);
+  lines.push(`- Combined Beneficiaries: ${totalBenes.toLocaleString()}`);
+
+  lines.push(`\n_Use other actions for deeper analysis: spending, compare, outliers, generics, specialty_`);
+
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
 async function handleApi(
   params: PartDParamsType,
   client: CMSClient
@@ -694,6 +1026,21 @@ Access CMS Medicare Part D drug spending and prescriber data.
 **stats** - Dataset metadata and statistics
   {"action": "stats"}
   {"action": "stats", "dataset": "quarterly"}
+
+**outliers** - Drugs with biggest price changes
+  {"action": "outliers"}
+  {"action": "outliers", "direction": "risers", "max_results": 10}
+  {"action": "outliers", "direction": "fallers"}
+
+**generics** - Find generic alternatives and compare costs
+  {"action": "generics", "drug": "Humira"}
+
+**specialty** - Prescribing patterns by provider specialty
+  {"action": "specialty", "drug": "Ozempic"}
+  {"action": "specialty", "drug": "Eliquis", "specialty": "Cardiology"}
+
+**summary** - Dashboard overview of Part D landscape
+  {"action": "summary"}
 
 **api** - Raw CMS Data API access
   {"action": "api", "dataset": "quarterly", "query": "metformin"}

@@ -30,7 +30,7 @@ There is no test framework configured. No linter or formatter is configured.
 src/
   index.ts      # Worker entry point, MCP server setup, route handling
   types.ts      # Type definitions, Zod schema, CMS dataset UUIDs
-  handlers.ts   # Action dispatcher + 11 action handlers + formatting utils
+  handlers.ts   # Action dispatcher + 15 action handlers + formatting utils
   client.ts     # CMSClient class wrapping CMS Data API calls
 ```
 
@@ -40,9 +40,9 @@ Four files total. No subdirectories, no test files.
 
 ### Single-Tool, Action-Dispatch Pattern
 
-The server exposes one MCP tool named `partd` with an `action` parameter that dispatches to 11 handlers. This is intentional for token efficiency — LLMs only need to learn one tool schema.
+The server exposes one MCP tool named `partd` with an `action` parameter that dispatches to 15 handlers. This is intentional for token efficiency — LLMs only need to learn one tool schema.
 
-**Actions:** `drug`, `spending`, `prescribers`, `top`, `search`, `compare`, `geography`, `manufacturer`, `stats`, `api`, `help`
+**Actions:** `drug`, `spending`, `prescribers`, `top`, `search`, `compare`, `geography`, `manufacturer`, `stats`, `outliers`, `generics`, `specialty`, `summary`, `api`, `help`
 
 ### Request Flow
 
@@ -62,10 +62,10 @@ The server exposes one MCP tool named `partd` with an `action` parameter that di
 
 | File | Key Exports | Lines |
 |------|-------------|-------|
-| `src/index.ts` | Default Worker fetch handler | ~95 |
-| `src/types.ts` | `PartDParams` (Zod schema), `DATASETS` (UUID constants), CMS response interfaces | ~100 |
-| `src/handlers.ts` | `handleAction()`, 11 action handlers, formatting utilities | ~718 |
-| `src/client.ts` | `CMSClient` class (all CMS API interactions) | ~215 |
+| `src/index.ts` | Default Worker fetch handler, Cache-Control headers | ~97 |
+| `src/types.ts` | `PartDParams` (Zod schema), `DATASETS` (UUID constants), CMS response interfaces | ~120 |
+| `src/handlers.ts` | `handleAction()`, 15 action handlers, formatting utilities | ~950+ |
+| `src/client.ts` | `CMSClient` class (all CMS API interactions) | ~285 |
 
 ## CMS Data API
 
