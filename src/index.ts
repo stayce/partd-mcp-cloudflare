@@ -47,7 +47,12 @@ function healthResponse(): Response {
       },
       tool: {
         name: "partd",
-        actions: ["drug", "spending", "prescribers", "top", "search", "api", "help"],
+        actions: [
+          "drug", "spending", "prescribers", "top", "search",
+          "compare", "geography", "manufacturer", "stats",
+          "outliers", "generics", "specialty", "summary",
+          "api", "help",
+        ],
       },
       data: {
         source: "CMS data.cms.gov",
@@ -81,7 +86,12 @@ export default {
     if (url.pathname === "/mcp") {
       const server = createServer();
       const handler = createMcpHandler(server);
-      return handler(request, env, ctx);
+      const response = await handler(request, env, ctx);
+
+      // CMS data updates quarterly; cache for 1 hour
+      response.headers.set("Cache-Control", "public, max-age=3600");
+
+      return response;
     }
 
     return new Response("Not Found", { status: 404 });

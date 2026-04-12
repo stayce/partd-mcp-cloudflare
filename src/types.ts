@@ -68,14 +68,53 @@ export interface PrescriberByDrug {
   Tot_Day_Suply: string;
 }
 
+export interface PrescriberByGeo {
+  Prscrbr_Geo_Desc: string;
+  Prscrbr_Geo_Cd: string;
+  Prscrbr_Geo_Lvl: string;
+  Brnd_Name: string;
+  Gnrc_Name: string;
+  Tot_Clms: string;
+  Tot_Drug_Cst: string;
+  Tot_Day_Suply: string;
+  Tot_Benes: string;
+  GE65_Tot_Clms: string;
+  GE65_Tot_Drug_Cst: string;
+}
+
+export interface PrescriberByProvider {
+  Prscrbr_NPI: string;
+  Prscrbr_Last_Org_Name: string;
+  Prscrbr_First_Name: string;
+  Prscrbr_City: string;
+  Prscrbr_State_Abrvtn: string;
+  Prscrbr_Type: string;
+  Tot_Clms: string;
+  Tot_Drug_Cst: string;
+  Tot_Benes: string;
+  Tot_Day_Suply: string;
+  Bene_Avg_Age: string;
+  Bene_Avg_Risk_Scre: string;
+}
+
 // Part D action schema - single tool with action dispatch
 export const PartDParams = z.object({
-  action: z.enum(["drug", "spending", "prescribers", "top", "search", "api", "help"]),
+  action: z.enum([
+    "drug", "spending", "prescribers", "top", "search",
+    "compare", "geography", "manufacturer", "stats",
+    "outliers", "generics", "specialty", "summary",
+    "api", "help",
+  ]),
   query: z.string().optional(),
   drug: z.string().optional(),
+  drug2: z.string().optional(),
+  manufacturer: z.string().optional(),
+  specialty: z.string().optional(),
   state: z.string().optional(),
   npi: z.string().optional(),
-  dataset: z.enum(["quarterly", "annual", "prescriber"]).optional(),
+  dataset: z.enum(["quarterly", "annual", "prescriber", "prescriber-provider", "prescriber-geo"]).optional(),
+  sort: z.enum(["spending", "beneficiaries", "claims"]).optional(),
+  direction: z.enum(["risers", "fallers", "both"]).optional(),
   max_results: z.number().optional(),
   path: z.string().optional(),
 });
